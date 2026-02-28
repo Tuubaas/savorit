@@ -21,7 +21,10 @@ export async function POST(request: Request) {
 
 	try {
 		const result = await extractInstagramPost(url);
-		return NextResponse.json(result);
+		return NextResponse.json({
+			caption: result.caption,
+			imageBase64: result.imageData ? result.imageData.toString("base64") : null,
+		});
 	} catch (err) {
 		const message =
 			err instanceof Error ? err.message : "Failed to extract post.";

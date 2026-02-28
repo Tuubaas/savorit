@@ -2,6 +2,8 @@
 
 import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import {
@@ -724,7 +726,7 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
         body: JSON.stringify({ url }),
       });
       const data = (await res.json()) as
-        | { caption: string; imageUrl: string | null }
+        | { caption: string; imageBase64: string | null }
         | { error: string };
 
       if ("error" in data) {
@@ -732,8 +734,24 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
       }
 
       const recipe = parseInstagramCaption(data.caption, url);
-      if (data.imageUrl) recipe.images.push(data.imageUrl);
       const id = await saveRecipe(recipe);
+
+      if (data.imageBase64) {
+        const dir = join(process.cwd(), "public", "recipe-images");
+        await mkdir(dir, { recursive: true });
+        const buf = Buffer.from(data.imageBase64, "base64");
+        // Detect format from magic bytes: JPEG starts with FF D8, PNG with 89 50
+        const ext = buf[0] === 0xff && buf[1] === 0xd8 ? "jpg" : "png";
+        const filePath = join(dir, `${id}.${ext}`);
+        await writeFile(filePath, buf);
+        const imageUrl = `/recipe-images/${id}.${ext}`;
+        recipe.images = [imageUrl];
+        await db
+          .update(recipesTable)
+          .set({ imageUrl })
+          .where(eq(recipesTable.id, id));
+      }
+
       return { success: true, recipe, id };
     }
 
