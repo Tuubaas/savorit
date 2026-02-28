@@ -215,6 +215,20 @@ export function RecipeCard({ recipe }: { recipe: RecipeData }) {
             Could not extract structured recipe data from this page.
           </p>
         )}
+           {recipe.sourceUrl && (
+          <div className="border-t border-zinc-100 dark:border-zinc-800 pt-4 text-sm">
+            <span className="text-zinc-500 dark:text-zinc-400">Source: </span>
+            <a
+              href={recipe.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-700 dark:text-zinc-300 underline underline-offset-2 hover:text-zinc-900 dark:hover:text-zinc-100 break-all"
+            >
+              {recipe.sourceUrl}
+            </a>
+          </div>
+        )}
+
 
         {/* Wake lock toggle */}
         <div className="print:hidden border-t border-zinc-100 dark:border-zinc-800 pt-4">
