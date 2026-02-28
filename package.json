@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@neondatabase/auth": "^0.2.0-beta.1",
     "@neondatabase/serverless": "^1.0.2",
     "cheerio": "^1.0.0",
     "drizzle-orm": "^0.45.1",
