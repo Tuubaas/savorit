@@ -9,6 +9,7 @@ export type RecipeListItem = {
   description: string | null;
   imageUrl: string | null;
   tags: string[];
+  createdBy?: string | null;
   createdAt: Date | string;
 };
 
@@ -214,7 +215,7 @@ export function RecipeListWithFilter({ recipes }: { recipes: RecipeListItem[] })
                   </div>
                 )}
                 <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-auto">
-                  {new Date(recipe.createdAt).toLocaleDateString()}
+                  {recipe.createdBy && `${recipe.createdBy} · `}{new Date(recipe.createdAt).toLocaleDateString()}
                 </p>
               </div>
             </Link>

@@ -10,8 +10,10 @@ import {
   ingredients as ingredientsTable,
   instructions as instructionsTable,
   recipes as recipesTable,
+  userRecipes as userRecipesTable,
 } from "../db/schema";
 import { isInstagramUrl } from "../lib/instagram";
+import { auth } from "../lib/auth/server";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_SIZE = 2 * 1024 * 1024; // 2MB
@@ -293,46 +295,63 @@ export type ParseResult =
   | { success: true; recipe: RecipeData; id: string }
   | { success: false; error: string };
 
-async function saveRecipe(recipe: RecipeData): Promise<string> {
+async function saveRecipe(recipe: RecipeData, userId?: string, createdBy?: string): Promise<string> {
+  // Check if this recipe URL already exists
   const existing = await db.query.recipes.findFirst({
     where: eq(recipesTable.sourceUrl, recipe.sourceUrl),
   });
-  if (existing) return existing.id;
 
-  const [inserted] = await db
-    .insert(recipesTable)
-    .values({
-      title: recipe.title,
-      description: recipe.description ?? null,
-      sourceUrl: recipe.sourceUrl,
-      imageUrl: recipe.images[0] ?? null,
-      servings: recipe.servings ?? null,
-      rawCaption: recipe.description ?? "",
-      tags: recipe.tags ?? [],
-    })
-    .returning({ id: recipesTable.id });
+  let recipeId: string;
 
-  if (recipe.ingredients.length > 0) {
-    await db.insert(ingredientsTable).values(
-      recipe.ingredients.map((name, i) => ({
-        recipeId: inserted.id,
-        name,
-        orderIndex: i,
-      })),
-    );
+  if (existing) {
+    recipeId = existing.id;
+  } else {
+    const [inserted] = await db
+      .insert(recipesTable)
+      .values({
+        title: recipe.title,
+        description: recipe.description ?? null,
+        sourceUrl: recipe.sourceUrl,
+        imageUrl: recipe.images[0] ?? null,
+        servings: recipe.servings ?? null,
+        rawCaption: recipe.description ?? "",
+        tags: recipe.tags ?? [],
+        createdBy: createdBy ?? null,
+      })
+      .returning({ id: recipesTable.id });
+
+    recipeId = inserted.id;
+
+    if (recipe.ingredients.length > 0) {
+      await db.insert(ingredientsTable).values(
+        recipe.ingredients.map((name, i) => ({
+          recipeId,
+          name,
+          orderIndex: i,
+        })),
+      );
+    }
+
+    if (recipe.instructions.length > 0) {
+      await db.insert(instructionsTable).values(
+        recipe.instructions.map((content, i) => ({
+          recipeId,
+          stepNumber: i + 1,
+          content,
+        })),
+      );
+    }
   }
 
-  if (recipe.instructions.length > 0) {
-    await db.insert(instructionsTable).values(
-      recipe.instructions.map((content, i) => ({
-        recipeId: inserted.id,
-        stepNumber: i + 1,
-        content,
-      })),
-    );
+  // Link recipe to user (ignore if already linked)
+  if (userId) {
+    await db
+      .insert(userRecipesTable)
+      .values({ userId, recipeId })
+      .onConflictDoNothing();
   }
 
-  return inserted.id;
+  return recipeId;
 }
 
 // ── Instagram caption parsing ──────────────────────────────────────
@@ -758,6 +777,13 @@ export async function parseUrlAction(
   _prevState: ParseResult | null,
   formData: FormData,
 ): Promise<ParseResult> {
+  const { data: session } = await auth.getSession();
+  if (!session?.user) {
+    return { success: false, error: "You must be signed in." };
+  }
+  const createdBy = session.user.name || session.user.email;
+  const userId = session.user.id;
+
   const urlInput = formData.get("url");
   const url = typeof urlInput === "string" ? urlInput.trim() : "";
   const openaiKey = (() => {
@@ -785,13 +811,22 @@ export async function parseUrlAction(
     },
   });
   if (existing) {
+    if (userId) {
+      await db
+        .insert(userRecipesTable)
+        .values({ userId, recipeId: existing.id })
+        .onConflictDoNothing();
+    }
     const recipe = dbRecipeToRecipeData(existing);
     return { success: true, recipe, id: existing.id };
   }
 
   try {
     if (isInstagramUrl(url)) {
-      const res = await fetch("http://localhost:3000/api/instagram", {
+      const { headers: reqHeaders } = await import("next/headers");
+      const host = (await reqHeaders()).get("host") || "localhost:3000";
+      const protocol = host.startsWith("localhost") ? "http" : "https";
+      const res = await fetch(`${protocol}://${host}/api/instagram`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -808,7 +843,7 @@ export async function parseUrlAction(
       if (openaiKey) {
         recipe = await formatRecipeWithOpenAI(recipe, openaiKey);
       }
-      const id = await saveRecipe(recipe);
+      const id = await saveRecipe(recipe, userId, createdBy);
 
       if (data.imageBase64) {
         const dir = join(process.cwd(), "public", "recipe-images");
@@ -902,7 +937,7 @@ export async function parseUrlAction(
       const formatted = openaiKey
         ? await formatRecipeWithOpenAI(jsonLdRecipe, openaiKey)
         : jsonLdRecipe;
-      const id = await saveRecipe(formatted);
+      const id = await saveRecipe(formatted, userId, createdBy);
       return { success: true, recipe: formatted, id };
     }
 
@@ -912,7 +947,7 @@ export async function parseUrlAction(
     if (openaiKey) {
       recipe = await formatRecipeWithOpenAI(recipe, openaiKey);
     }
-    const id = await saveRecipe(recipe);
+    const id = await saveRecipe(recipe, userId, createdBy);
 
     return { success: true, recipe, id };
   } catch (err) {

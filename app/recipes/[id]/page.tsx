@@ -49,6 +49,11 @@ export default async function RecipeDetailPage({
             &larr; Back to recipes
           </Link>
         </div>
+        {result.createdBy && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Added by {result.createdBy}
+          </p>
+        )}
         <RecipeCard recipe={recipe} recipeId={result.id} />
       </main>
     </div>

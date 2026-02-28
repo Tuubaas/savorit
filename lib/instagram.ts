@@ -83,7 +83,7 @@ export async function extractInstagramPost(
 		]);
 
 		// Fallback 1: extract thumbnail URL from embedded JSON in <script> tags
-		if (!imageData || imageData.length < 10_000) {
+		if (!imageData || (imageData as Buffer).length < 10_000) {
 			const scriptImageUrl = await page.evaluate(() => {
 				const scripts = document.querySelectorAll("script");
 				for (const s of scripts) {
@@ -118,7 +118,7 @@ export async function extractInstagramPost(
 
 				if (fetched) {
 					const buf = Buffer.from(fetched, "base64");
-					if (buf.length > (imageData?.length ?? 0)) {
+					if (buf.length > ((imageData as Buffer | null)?.length ?? 0)) {
 						imageData = buf;
 					}
 				}
@@ -126,7 +126,7 @@ export async function extractInstagramPost(
 		}
 
 		// Fallback 2: high-DPI screenshot of the media element
-		if (!imageData || imageData.length < 10_000) {
+		if (!imageData || (imageData as Buffer).length < 10_000) {
 			const mediaEl = await page.$(
 				".EmbeddedMediaImage, .EmbeddedMedia video, .EmbeddedMedia img, .EmbeddedMedia",
 			);
