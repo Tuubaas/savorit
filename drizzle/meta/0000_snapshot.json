@@ -1,5 +1,5 @@
 {
-  "id": "1baf8d16-154c-4721-88f0-0834411d94b1",
+  "id": "85437830-686e-4acc-b227-13c911912cb8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -179,7 +179,15 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "recipes_source_url_unique": {
+          "name": "recipes_source_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "source_url"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
