@@ -12,6 +12,7 @@ import {
   recipes as recipesTable,
 } from "../db/schema";
 import { isInstagramUrl } from "../lib/instagram";
+import { auth } from "../lib/auth/server";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_SIZE = 2 * 1024 * 1024; // 2MB
@@ -688,6 +689,11 @@ export async function parseUrlAction(
   _prevState: ParseResult | null,
   formData: FormData,
 ): Promise<ParseResult> {
+  const { data: session } = await auth.getSession();
+  if (!session?.user) {
+    return { success: false, error: "You must be signed in." };
+  }
+
   const urlInput = formData.get("url");
   const url = typeof urlInput === "string" ? urlInput.trim() : "";
 

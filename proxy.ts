@@ -1,6 +1,17 @@
 import { auth } from "@/lib/auth/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth.middleware({ loginUrl: "/auth/sign-in" });
+const authMiddleware = auth.middleware({ loginUrl: "/auth/sign-in" });
+
+export default async function proxy(request: NextRequest) {
+	// Server actions use a special header — let them through
+	// to avoid breaking the RSC response protocol
+	if (request.headers.get("Next-Action")) {
+		return NextResponse.next();
+	}
+	return authMiddleware(request);
+}
 
 export const config = {
 	matcher: [
