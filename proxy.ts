@@ -5,5 +5,8 @@ export default auth.middleware({
 });
 
 export const config = {
-	matcher: ["/account/:path*"],
+	matcher: [
+		// Protect everything except auth routes, API auth, static files, and Next internals
+		"/((?!auth|api/auth|_next/static|_next/image|favicon\\.ico|recipe-images).*)",
+	],
 };
