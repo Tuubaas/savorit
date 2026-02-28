@@ -28,6 +28,7 @@ export default async function RecipeDetailPage({
   const recipe: RecipeData = {
     title: result.title,
     description: result.description ?? undefined,
+    servings: result.servings ?? undefined,
     ingredients: result.ingredients.map((i) =>
       i.quantity ? `${i.quantity} ${i.name}` : i.name,
     ),

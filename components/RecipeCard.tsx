@@ -3,10 +3,67 @@
 import { useEffect, useRef, useState } from "react";
 import type { RecipeData } from "../app/actions";
 
+function parseServingsNumber(servings: string): number | null {
+  // "4-6 servings" → 4
+  const rangeMatch = servings.match(/(\d+)\s*[-–]\s*\d+/);
+  if (rangeMatch) return parseInt(rangeMatch[1]);
+  // "4", "4 servings", "serves 4", "makes 4"
+  const numMatch = servings.match(/\d+(?:\.\d+)?/);
+  if (numMatch) return parseFloat(numMatch[0]);
+  return null;
+}
+
+function parseLeadingNumber(str: string): { value: number; end: number } | null {
+  // Mixed number: "1 1/2"
+  const mixed = str.match(/^(\d+)\s+(\d+)\/(\d+)/);
+  if (mixed) {
+    return {
+      value: parseInt(mixed[1]) + parseInt(mixed[2]) / parseInt(mixed[3]),
+      end: mixed[0].length,
+    };
+  }
+  // Fraction: "1/2"
+  const frac = str.match(/^(\d+)\/(\d+)/);
+  if (frac) {
+    return { value: parseInt(frac[1]) / parseInt(frac[2]), end: frac[0].length };
+  }
+  // Decimal or integer
+  const num = str.match(/^(\d+(?:\.\d+)?)/);
+  if (num) return { value: parseFloat(num[1]), end: num[0].length };
+  return null;
+}
+
+function formatScaledNumber(value: number): string {
+  const fractions: [number, string][] = [
+    [1 / 8, "⅛"], [1 / 4, "¼"], [1 / 3, "⅓"], [3 / 8, "⅜"],
+    [1 / 2, "½"], [5 / 8, "⅝"], [2 / 3, "⅔"], [3 / 4, "¾"], [7 / 8, "⅞"],
+  ];
+  const whole = Math.floor(value);
+  const decimal = value - whole;
+  if (decimal < 0.05) return whole === 0 ? "0" : String(whole);
+  for (const [frac, symbol] of fractions) {
+    if (Math.abs(decimal - frac) < 0.06) {
+      return whole > 0 ? `${whole}${symbol}` : symbol;
+    }
+  }
+  return value.toFixed(1).replace(/\.0$/, "");
+}
+
+function scaleIngredient(ingredient: string, factor: number): string {
+  if (factor === 1) return ingredient;
+  const parsed = parseLeadingNumber(ingredient);
+  if (!parsed) return ingredient;
+  const scaled = parsed.value * factor;
+  return formatScaledNumber(scaled) + ingredient.slice(parsed.end);
+}
+
 export function RecipeCard({ recipe }: { recipe: RecipeData }) {
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  const basePortions = recipe.servings ? parseServingsNumber(recipe.servings) : null;
+  const [portions, setPortions] = useState<number>(basePortions ?? 1);
 
   async function acquireWakeLock() {
     if (!("wakeLock" in navigator)) return;
@@ -124,11 +181,30 @@ export function RecipeCard({ recipe }: { recipe: RecipeData }) {
                 cook
               </span>
             )}
-            {recipe.servings && (
-              <span>
-                <span className="mr-1">👥</span>
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  {recipe.servings}
+            {recipe.servings && basePortions && (
+              <span className="flex items-center gap-1.5">
+                <span>👥</span>
+                <button
+                  type="button"
+                  onClick={() => setPortions((p) => Math.max(1, p - 1))}
+                  className="flex h-5 w-5 items-center justify-center rounded border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-xs leading-none"
+                  aria-label="Decrease portions"
+                >
+                  −
+                </button>
+                <span className="font-medium text-zinc-800 dark:text-zinc-200 tabular-nums">
+                  {portions}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPortions((p) => p + 1)}
+                  className="flex h-5 w-5 items-center justify-center rounded border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-xs leading-none"
+                  aria-label="Increase portions"
+                >
+                  +
+                </button>
+                <span className="text-zinc-500 dark:text-zinc-400">
+                  {recipe.servings.replace(/\d+(?:\.\d+)?/, "").replace(/^[-–\s]+/, "").trim() || "servings"}
                 </span>
               </span>
             )}
@@ -142,7 +218,10 @@ export function RecipeCard({ recipe }: { recipe: RecipeData }) {
               Ingredients
             </h3>
             <ul className="flex flex-col gap-2">
-              {recipe.ingredients.map((ingredient, i) => (
+              {recipe.ingredients.map((ingredient, i) => {
+                const scaleFactor = basePortions ? portions / basePortions : 1;
+                const displayIngredient = scaleIngredient(ingredient, scaleFactor);
+                return (
                 <li key={i}>
                   <button
                     type="button"
@@ -179,11 +258,12 @@ export function RecipeCard({ recipe }: { recipe: RecipeData }) {
                           : "text-zinc-700 dark:text-zinc-300"
                       }
                     >
-                      {ingredient}
+                      {displayIngredient}
                     </span>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
         )}
