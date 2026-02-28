@@ -5,7 +5,7 @@ export const recipes = pgTable("recipes", {
 	id: uuid().defaultRandom().primaryKey(),
 	title: text().notNull(),
 	description: text(),
-	sourceUrl: text("source_url").notNull(),
+	sourceUrl: text("source_url").notNull().unique(),
 	imageUrl: text("image_url"),
 	servings: text(),
 	rawCaption: text("raw_caption").notNull(),

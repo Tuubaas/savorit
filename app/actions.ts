@@ -2,6 +2,7 @@
 
 import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   ingredients as ingredientsTable,
@@ -266,6 +267,11 @@ export type ParseResult =
   | { success: false; error: string };
 
 async function saveRecipe(recipe: RecipeData): Promise<string> {
+  const existing = await db.query.recipes.findFirst({
+    where: eq(recipesTable.sourceUrl, recipe.sourceUrl),
+  });
+  if (existing) return existing.id;
+
   const [inserted] = await db
     .insert(recipesTable)
     .values({
