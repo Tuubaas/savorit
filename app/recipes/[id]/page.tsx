@@ -33,6 +33,7 @@ export default async function RecipeDetailPage({
     ),
     instructions: result.instructions.map((i) => i.content),
     images: result.imageUrl ? [result.imageUrl] : [],
+    servings: result.servings ?? undefined,
     sourceUrl: result.sourceUrl,
   };
 

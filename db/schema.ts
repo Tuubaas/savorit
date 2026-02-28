@@ -7,6 +7,7 @@ export const recipes = pgTable("recipes", {
 	description: text(),
 	sourceUrl: text("source_url").notNull(),
 	imageUrl: text("image_url"),
+	servings: text(),
 	rawCaption: text("raw_caption").notNull(),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
