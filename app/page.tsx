@@ -87,7 +87,7 @@ function RecipeCard({ recipe }: { recipe: RecipeData }) {
               {recipe.title}
             </h2>
             {recipe.description && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-3 print:line-clamp-none">
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-line">
                 {recipe.description}
               </p>
             )}

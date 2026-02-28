@@ -47,24 +47,23 @@ export async function extractInstagramPost(
 			});
 
 		const caption = await page.evaluate(() => {
-			// Strategy 1: Instagram embed caption classes
+			// Use innerText instead of textContent to preserve line breaks
+			// from <br> tags and block elements
 			const captionEl =
 				document.querySelector(".CaptionContent") ??
 				document.querySelector(".Caption");
-			if (captionEl?.textContent?.trim()) {
-				return captionEl.textContent.trim();
+			if (captionEl instanceof HTMLElement && captionEl.innerText.trim()) {
+				return captionEl.innerText.trim();
 			}
 
-			// Strategy 2: Blockquote content (oEmbed-style embeds)
 			const blockquote = document.querySelector(
 				"blockquote.instagram-media",
 			);
-			if (blockquote?.textContent?.trim()) {
-				return blockquote.textContent.trim();
+			if (blockquote instanceof HTMLElement && blockquote.innerText.trim()) {
+				return blockquote.innerText.trim();
 			}
 
-			// Strategy 3: Any substantial text on the page
-			const body = document.body.textContent?.trim() ?? "";
+			const body = document.body.innerText?.trim() ?? "";
 			return body.length > 20 ? body : "";
 		});
 

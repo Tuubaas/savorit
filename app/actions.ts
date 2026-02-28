@@ -259,6 +259,134 @@ export type ParseResult =
   | { success: true; recipe: RecipeData }
   | { success: false; error: string };
 
+function cleanInstagramCaption(raw: string): string[] {
+  return raw
+    .split("\n")
+    .map((l) => l.trim())
+    // Remove trailing junk: "View all X comments", "Like", comment counts
+    .filter((l) => !/^(View all \d|Like$|\d+ likes?$)/i.test(l))
+    .filter(Boolean);
+}
+
+function isJunkLine(line: string): boolean {
+  return /^(comment\s+.{0,30}(send|dm|get)|follow\s+me|save\s+this|share\s+this|link\s+in\s+bio|tag\s+a\s+friend)/i.test(line);
+}
+
+function parseInstagramCaption(caption: string, sourceUrl: string): RecipeData {
+  const lines = cleanInstagramCaption(caption);
+
+  let title = "Instagram Recipe";
+  const descriptionLines: string[] = [];
+  const ingredients: string[] = [];
+  const instructions: string[] = [];
+
+  // The first line from the embed often starts with the username glued to the title.
+  // Instagram embed format: "usernameActual Title Here"
+  // We can't reliably split these, so just use it as-is for the title.
+
+  // Find section boundaries by looking for common header patterns
+  const ingredientHeaderIdx = lines.findIndex((l) =>
+    /^ingredients\b/i.test(l),
+  );
+  const instructionHeaderIdx = lines.findIndex((l) =>
+    /^(instructions|directions|method|steps|how to make|preparation)\b/i.test(l),
+  );
+
+  // Also detect inline section markers like "Ingredients• 1 can..."
+  // where the header and first item are on the same line
+  const inlineIngIdx = ingredientHeaderIdx < 0
+    ? lines.findIndex((l) => /^ingredients\s*[•\-*:]/i.test(l))
+    : -1;
+  const inlineInsIdx = instructionHeaderIdx < 0
+    ? lines.findIndex((l) => /^instructions\s*\d/i.test(l))
+    : -1;
+
+  const effectiveIngIdx = ingredientHeaderIdx >= 0 ? ingredientHeaderIdx : inlineIngIdx;
+  const effectiveInsIdx = instructionHeaderIdx >= 0 ? instructionHeaderIdx : inlineInsIdx;
+
+  if (effectiveIngIdx >= 0 || effectiveInsIdx >= 0) {
+    // Structured caption with section headers
+    const headerStart = Math.min(
+      ...[effectiveIngIdx, effectiveInsIdx].filter((i) => i >= 0),
+    );
+
+    // Title is first line; description is lines between title and first header
+    if (headerStart > 0) {
+      title = lines[0];
+      for (let i = 1; i < headerStart; i++) {
+        if (!isJunkLine(lines[i]) && !lines[i].startsWith("#")) {
+          descriptionLines.push(lines[i]);
+        }
+      }
+    }
+
+    // Determine ingredient range
+    const ingStart = effectiveIngIdx >= 0 ? effectiveIngIdx : -1;
+    const insStart = effectiveInsIdx >= 0 ? effectiveInsIdx : -1;
+
+    if (ingStart >= 0) {
+      const ingEnd = insStart > ingStart ? effectiveInsIdx : lines.length;
+      // Handle inline: "Ingredients• 1 can..." — split on bullet
+      const headerLine = lines[ingStart];
+      const inlineSplit = headerLine.match(/^ingredients\s*[•\-*:]\s*(.*)/i);
+      const startOffset = inlineSplit ? ingStart : ingStart + 1;
+      if (inlineSplit?.[1]) ingredients.push(inlineSplit[1].trim());
+
+      for (let i = startOffset; i < ingEnd; i++) {
+        if (i === ingStart && inlineSplit) continue;
+        const line = lines[i].replace(/^[-•·◦▪⁃*]\s*/, "").trim();
+        if (!line || line.startsWith("#") || isJunkLine(line)) continue;
+        ingredients.push(line);
+      }
+    }
+
+    if (insStart >= 0) {
+      const insEnd = ingStart > insStart ? effectiveIngIdx : lines.length;
+      // Handle inline: "Instructions1. Preheat..."
+      const headerLine = lines[insStart];
+      const inlineSplit = headerLine.match(/^(?:instructions|directions|method|steps)\s*(\d+[.)]\s*.*)/i);
+      const startOffset = inlineSplit ? insStart : insStart + 1;
+      if (inlineSplit?.[1]) {
+        instructions.push(inlineSplit[1].replace(/^\d+[.):\s-]+/, "").trim());
+      }
+
+      for (let i = startOffset; i < insEnd; i++) {
+        if (i === insStart && inlineSplit) continue;
+        const line = lines[i]
+          .replace(/^(?:step\s*)?\d+[.):\s-]+/i, "")
+          .replace(/^[-•·◦▪⁃*]\s*/, "")
+          .trim();
+        if (!line || line.startsWith("#") || isJunkLine(line)) break;
+        instructions.push(line);
+      }
+    }
+  } else {
+    // Unstructured caption — use heuristics
+    title = lines[0];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.startsWith("#") || isJunkLine(line)) continue;
+      if (/^[-•·◦▪⁃*]\s/.test(line)) {
+        ingredients.push(line.replace(/^[-•·◦▪⁃*]\s*/, "").trim());
+      } else if (/^\d+[.)]\s/.test(line)) {
+        instructions.push(line.replace(/^\d+[.)]\s*/, "").trim());
+      } else {
+        descriptionLines.push(line);
+      }
+    }
+  }
+
+  return {
+    title,
+    description: descriptionLines.join("\n") || undefined,
+    ingredients,
+    instructions,
+    images: [],
+    sourceUrl,
+  };
+}
+
 export async function parseUrlAction(
   _prevState: ParseResult | null,
   formData: FormData,
@@ -296,17 +424,9 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
         return { success: false, error: data.error };
       }
 
-      return {
-        success: true,
-        recipe: {
-          title: "Instagram Recipe",
-          description: data.caption,
-          ingredients: [],
-          instructions: [],
-          images: data.imageUrl ? [data.imageUrl] : [],
-          sourceUrl: url,
-        },
-      };
+      const recipe = parseInstagramCaption(data.caption, url);
+      if (data.imageUrl) recipe.images.push(data.imageUrl);
+      return { success: true, recipe };
     }
 
     const controller = new AbortController();
