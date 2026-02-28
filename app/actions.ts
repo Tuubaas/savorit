@@ -35,6 +35,28 @@ export type RecipeData = {
   sourceUrl: string;
 };
 
+function dbRecipeToRecipeData(result: {
+  title: string;
+  description: string | null;
+  sourceUrl: string;
+  imageUrl: string | null;
+  servings: string | null;
+  ingredients: { name: string; quantity: string | null }[];
+  instructions: { content: string }[];
+}): RecipeData {
+  return {
+    title: result.title,
+    description: result.description ?? undefined,
+    ingredients: result.ingredients.map((i) =>
+      i.quantity ? `${i.quantity} ${i.name}` : i.name,
+    ),
+    instructions: result.instructions.map((i) => i.content),
+    images: result.imageUrl ? [result.imageUrl] : [],
+    servings: result.servings ?? undefined,
+    sourceUrl: result.sourceUrl,
+  };
+}
+
 function extractMetaContent($: CheerioAPI): string {
   const parts: string[] = [];
 
@@ -611,6 +633,18 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
       success: false,
       error: "Invalid URL. Only http and https URLs are allowed.",
     };
+  }
+
+  const existing = await db.query.recipes.findFirst({
+    where: eq(recipesTable.sourceUrl, url),
+    with: {
+      ingredients: { orderBy: (i, { asc }) => [asc(i.orderIndex)] },
+      instructions: { orderBy: (i, { asc }) => [asc(i.stepNumber)] },
+    },
+  });
+  if (existing) {
+    const recipe = dbRecipeToRecipeData(existing);
+    return { success: true, recipe, id: existing.id };
   }
 
   try {
