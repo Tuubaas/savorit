@@ -11,6 +11,7 @@ export const recipes = pgTable("recipes", {
 	rawCaption: text("raw_caption").notNull(),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at").defaultNow().notNull(),
+	tags: text().array().default([]).notNull(),
 });
 
 export const ingredients = pgTable("ingredients", {
