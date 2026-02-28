@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "../../../db";
 import { recipes } from "../../../db/schema";
 import type { RecipeData } from "../../actions";
 import { RecipeCard } from "../../../components/RecipeCard";
+import { auth } from "@/lib/auth/server";
 
 export default async function RecipeDetailPage({
   params,
@@ -14,9 +15,11 @@ export default async function RecipeDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const { data: session } = await auth.getSession();
+  const userId = session!.user.id;
 
   const result = await db.query.recipes.findFirst({
-    where: eq(recipes.id, id),
+    where: and(eq(recipes.id, id), eq(recipes.userId, userId)),
     with: {
       ingredients: { orderBy: (i, { asc }) => [asc(i.orderIndex)] },
       instructions: { orderBy: (i, { asc }) => [asc(i.stepNumber)] },
@@ -34,7 +37,6 @@ export default async function RecipeDetailPage({
     ),
     instructions: result.instructions.map((i) => i.content),
     images: result.imageUrl ? [result.imageUrl] : [],
-    servings: result.servings ?? undefined,
     sourceUrl: result.sourceUrl,
   };
 
