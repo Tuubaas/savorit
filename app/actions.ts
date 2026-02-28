@@ -2,9 +2,8 @@
 
 import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { uploadToR2 } from "../lib/r2";
 import { db } from "../db";
 import {
   ingredients as ingredientsTable,
@@ -843,22 +842,23 @@ export async function parseUrlAction(
       if (openaiKey) {
         recipe = await formatRecipeWithOpenAI(recipe, openaiKey);
       }
-      const id = await saveRecipe(recipe, userId, createdBy);
+     const id = await saveRecipe(recipe, userId, createdBy); 
 
       if (data.imageBase64) {
-        const dir = join(process.cwd(), "public", "recipe-images");
-        await mkdir(dir, { recursive: true });
         const buf = Buffer.from(data.imageBase64, "base64");
         // Detect format from magic bytes: JPEG starts with FF D8, PNG with 89 50
         const ext = buf[0] === 0xff && buf[1] === 0xd8 ? "jpg" : "png";
-        const filePath = join(dir, `${id}.${ext}`);
-        await writeFile(filePath, buf);
-        const imageUrl = `/recipe-images/${id}.${ext}`;
+        const contentType = ext === "jpg" ? "image/jpeg" : "image/png";
+        const imageUrl = await uploadToR2(
+          `${id}.${ext}`,
+          buf,
+          contentType,
+        );
         recipe.images = [imageUrl];
-        await db
+       await db
           .update(recipesTable)
           .set({ imageUrl })
-          .where(eq(recipesTable.id, id));
+          .where(eq(recipesTable.id, id)); 
       }
 
       return { success: true, recipe, id };
