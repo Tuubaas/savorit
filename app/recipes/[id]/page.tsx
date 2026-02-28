@@ -35,6 +35,7 @@ export default async function RecipeDetailPage({
     instructions: result.instructions.map((i) => i.content),
     images: result.imageUrl ? [result.imageUrl] : [],
     sourceUrl: result.sourceUrl,
+    tags: result.tags && result.tags.length > 0 ? result.tags : undefined,
   };
 
   return (
@@ -48,7 +49,7 @@ export default async function RecipeDetailPage({
             &larr; Back to recipes
           </Link>
         </div>
-        <RecipeCard recipe={recipe} />
+        <RecipeCard recipe={recipe} recipeId={result.id} />
       </main>
     </div>
   );

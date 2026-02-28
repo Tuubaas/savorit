@@ -12,6 +12,7 @@ export default async function RecipesPage() {
       title: recipes.title,
       description: recipes.description,
       imageUrl: recipes.imageUrl,
+      tags: recipes.tags,
       createdAt: recipes.createdAt,
     })
     .from(recipes)
@@ -64,6 +65,18 @@ export default async function RecipesPage() {
                     <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
                       {recipe.description}
                     </p>
+                  )}
+                  {recipe.tags && recipe.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {recipe.tags.map((tag, i) => (
+                        <span
+                          key={`${tag}-${i}`}
+                          className="inline-flex rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-300"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-auto">
                     {recipe.createdAt.toLocaleDateString()}

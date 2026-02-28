@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RecipeData } from "../app/actions";
+import { updateRecipeTagsAction } from "../app/actions";
 
 function parseServingsNumber(servings: string): number | null {
   // "4-6 servings" → 4
@@ -57,12 +58,53 @@ function scaleIngredient(ingredient: string, factor: number): string {
   return formatScaledNumber(scaled) + ingredient.slice(parsed.end);
 }
 
-export function RecipeCard({ recipe }: { recipe: RecipeData }) {
+export function RecipeCard({
+  recipe,
+  recipeId,
+}: {
+  recipe: RecipeData;
+  recipeId?: string;
+}) {
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const [tags, setTags] = useState<string[]>(recipe.tags ?? []);
+  const [tagInput, setTagInput] = useState("");
+
+  useEffect(() => {
+    setTags(recipe.tags ?? []);
+  }, [recipe.tags]);
 
   const basePortions = recipe.servings ? parseServingsNumber(recipe.servings) : null;
+
+  const syncTagsToServer = useCallback(
+    async (newTags: string[], previousTags: string[]) => {
+      if (!recipeId) return;
+      const result = await updateRecipeTagsAction(recipeId, newTags);
+      if (!result.success) {
+        setTags(previousTags);
+      }
+    },
+    [recipeId],
+  );
+
+  function addTag(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    const next = [...tags];
+    if (next.includes(trimmed)) return;
+    next.push(trimmed);
+    setTags(next);
+    setTagInput("");
+    syncTagsToServer(next, tags);
+  }
+
+  function removeTag(index: number) {
+    const previous = tags;
+    const next = tags.filter((_, i) => i !== index);
+    setTags(next);
+    syncTagsToServer(next, previous);
+  }
   const [portions, setPortions] = useState<number>(basePortions ?? 1);
 
   async function acquireWakeLock() {
@@ -159,6 +201,47 @@ export function RecipeCard({ recipe }: { recipe: RecipeData }) {
             Save as PDF
           </button>
         </div>
+
+        {/* Tags */}
+        {(tags.length > 0 || recipeId) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((tag, i) => (
+              <span
+                key={`${tag}-${i}`}
+                className="inline-flex items-center gap-1 rounded-full bg-zinc-100 dark:bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-600 dark:text-zinc-300"
+              >
+                {tag}
+                {recipeId && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(i)}
+                    aria-label={`Remove tag ${tag}`}
+                    className="-mr-0.5 rounded p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M2 2l8 8M10 2L2 10" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
+              </span>
+            ))}
+            {recipeId && (
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addTag(tagInput);
+                  }
+                }}
+                placeholder="Add a tag..."
+                className="w-24 min-w-0 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-2.5 py-0.5 text-xs text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              />
+            )}
+          </div>
+        )}
 
         {/* Meta: prep / cook / servings */}
         {hasMeta && (

@@ -35,6 +35,7 @@ export type RecipeData = {
   cookTime?: string;
   servings?: string;
   sourceUrl: string;
+  tags?: string[];
 };
 
 function dbRecipeToRecipeData(result: {
@@ -43,6 +44,7 @@ function dbRecipeToRecipeData(result: {
   sourceUrl: string;
   imageUrl: string | null;
   servings: string | null;
+  tags?: string[] | null;
   ingredients: { name: string; quantity: string | null }[];
   instructions: { content: string }[];
 }): RecipeData {
@@ -56,6 +58,7 @@ function dbRecipeToRecipeData(result: {
     images: result.imageUrl ? [result.imageUrl] : [],
     servings: result.servings ?? undefined,
     sourceUrl: result.sourceUrl,
+    tags: result.tags && result.tags.length > 0 ? result.tags : undefined,
   };
 }
 
@@ -305,6 +308,7 @@ async function saveRecipe(recipe: RecipeData): Promise<string> {
       imageUrl: recipe.images[0] ?? null,
       servings: recipe.servings ?? null,
       rawCaption: recipe.description ?? "",
+      tags: recipe.tags ?? [],
     })
     .returning({ id: recipesTable.id });
 
@@ -922,5 +926,29 @@ export async function parseUrlAction(
       };
     }
     return { success: false, error: "Could not fetch URL." };
+  }
+}
+
+export type UpdateTagsResult = { success: true } | { success: false; error: string };
+
+export async function updateRecipeTagsAction(
+  recipeId: string,
+  tags: string[],
+): Promise<UpdateTagsResult> {
+  try {
+    const normalized = tags.map((t) => t.trim()).filter(Boolean);
+    const unique = [...new Set(normalized)];
+
+    await db
+      .update(recipesTable)
+      .set({ tags: unique })
+      .where(eq(recipesTable.id, recipeId));
+
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update tags",
+    };
   }
 }

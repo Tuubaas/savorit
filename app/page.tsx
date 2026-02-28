@@ -112,7 +112,7 @@ export default function Home() {
         {state && (
           <div className="w-full">
             {state.success ? (
-              <RecipeCard recipe={state.recipe} />
+              <RecipeCard recipe={state.recipe} recipeId={state.id} />
             ) : (
               <p className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-200">
                 {state.error}
