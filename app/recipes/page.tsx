@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { recipes, userRecipes } from "../../db/schema";
 import { auth } from "../../lib/auth/server";
+import { RecipeListWithFilter } from "./RecipeListWithFilter";
 
 export default async function RecipesPage({
   searchParams,
@@ -44,6 +45,16 @@ export default async function RecipesPage({
           })
           .from(recipes)
           .orderBy(desc(recipes.createdAt));
+
+  const recipeList = allRecipes.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    imageUrl: r.imageUrl,
+    tags: r.tags ?? [],
+    createdBy: r.createdBy,
+    createdAt: r.createdAt,
+  }));
 
   return (
     <div className="flex min-h-screen bg-zinc-50 font-sans dark:bg-black">
@@ -92,49 +103,7 @@ export default async function RecipesPage({
             .
           </p>
         ) : (
-          <div className="flex flex-col gap-4">
-            {allRecipes.map((recipe) => (
-              <Link
-                key={recipe.id}
-                href={`/recipes/${recipe.id}`}
-                className="flex gap-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-              >
-                {recipe.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={recipe.imageUrl}
-                    alt={recipe.title}
-                    className="h-20 w-20 rounded-lg object-cover shrink-0"
-                  />
-                )}
-                <div className="flex flex-col gap-1 min-w-0">
-                  <h2 className="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                    {recipe.title}
-                  </h2>
-                  {recipe.description && (
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
-                      {recipe.description}
-                    </p>
-                  )}
-                  {recipe.tags && recipe.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {recipe.tags.map((tag, i) => (
-                        <span
-                          key={`${tag}-${i}`}
-                          className="inline-flex rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-xs text-zinc-600 dark:text-zinc-300"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-auto">
-                    {recipe.createdBy && `${recipe.createdBy} · `}{recipe.createdAt.toLocaleDateString()}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <RecipeListWithFilter recipes={recipeList} />
         )}
       </main>
     </div>
