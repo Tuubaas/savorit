@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { db } from "../../db";
 import { recipes } from "../../db/schema";
 
@@ -15,7 +15,6 @@ export default async function RecipesPage() {
       createdAt: recipes.createdAt,
     })
     .from(recipes)
-    .where(eq(recipes.userId, "anonymous"))
     .orderBy(desc(recipes.createdAt));
 
   return (

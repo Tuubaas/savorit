@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   ingredients as ingredientsTable,
@@ -290,19 +290,15 @@ export type ParseResult =
   | { success: true; recipe: RecipeData; id: string }
   | { success: false; error: string };
 
-async function saveRecipe(recipe: RecipeData, userId: string): Promise<string> {
+async function saveRecipe(recipe: RecipeData): Promise<string> {
   const existing = await db.query.recipes.findFirst({
-    where: and(
-      eq(recipesTable.sourceUrl, recipe.sourceUrl),
-      eq(recipesTable.userId, userId),
-    ),
+    where: eq(recipesTable.sourceUrl, recipe.sourceUrl),
   });
   if (existing) return existing.id;
 
   const [inserted] = await db
     .insert(recipesTable)
     .values({
-      userId,
       title: recipe.title,
       description: recipe.description ?? null,
       sourceUrl: recipe.sourceUrl,
@@ -688,16 +684,10 @@ function parseInstagramCaption(caption: string, sourceUrl: string): RecipeData {
   };
 }
 
-const DEFAULT_USER_ID = "anonymous";
-
 export async function parseUrlAction(
   _prevState: ParseResult | null,
   formData: FormData,
 ): Promise<ParseResult> {
-  return parseUrlFromFormData(formData, DEFAULT_USER_ID);
-}
-
-async function parseUrlFromFormData(formData: FormData, userId: string): Promise<ParseResult> {
   const urlInput = formData.get("url");
   const url = typeof urlInput === "string" ? urlInput.trim() : "";
 
@@ -713,10 +703,7 @@ async function parseUrlFromFormData(formData: FormData, userId: string): Promise
   }
 
   const existing = await db.query.recipes.findFirst({
-    where: and(
-      eq(recipesTable.sourceUrl, url),
-      eq(recipesTable.userId, userId),
-    ),
+    where: eq(recipesTable.sourceUrl, url),
     with: {
       ingredients: { orderBy: (i, { asc }) => [asc(i.orderIndex)] },
       instructions: { orderBy: (i, { asc }) => [asc(i.stepNumber)] },
@@ -743,7 +730,7 @@ async function parseUrlFromFormData(formData: FormData, userId: string): Promise
       }
 
       const recipe = parseInstagramCaption(data.caption, url);
-      const id = await saveRecipe(recipe, userId);
+      const id = await saveRecipe(recipe);
 
       if (data.imageBase64) {
         const dir = join(process.cwd(), "public", "recipe-images");
@@ -834,14 +821,14 @@ async function parseUrlFromFormData(formData: FormData, userId: string): Promise
     const jsonLdRecipe = extractRecipeFromJsonLd($);
     if (jsonLdRecipe) {
       jsonLdRecipe.sourceUrl = url;
-      const id = await saveRecipe(jsonLdRecipe, userId);
+      const id = await saveRecipe(jsonLdRecipe);
       return { success: true, recipe: jsonLdRecipe, id };
     }
 
     // Remove noise before heuristic extraction
     $("script, style, nav, footer, noscript, iframe").remove();
     const recipe = extractRecipeHeuristic($, url);
-    const id = await saveRecipe(recipe, userId);
+    const id = await saveRecipe(recipe);
 
     return { success: true, recipe, id };
   } catch (err) {

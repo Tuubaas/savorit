@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { db } from "../../../db";
 import { recipes } from "../../../db/schema";
@@ -16,7 +16,7 @@ export default async function RecipeDetailPage({
   const { id } = await params;
 
   const result = await db.query.recipes.findFirst({
-    where: and(eq(recipes.id, id), eq(recipes.userId, "anonymous")),
+    where: eq(recipes.id, id),
     with: {
       ingredients: { orderBy: (i, { asc }) => [asc(i.orderIndex)] },
       instructions: { orderBy: (i, { asc }) => [asc(i.stepNumber)] },

@@ -3,7 +3,6 @@ import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const recipes = pgTable("recipes", {
 	id: uuid().defaultRandom().primaryKey(),
-	userId: text("user_id").notNull(),
 	title: text().notNull(),
 	description: text(),
 	sourceUrl: text("source_url").notNull(),
