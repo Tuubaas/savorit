@@ -1,12 +1,10 @@
-import { auth } from "@/lib/auth/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth.middleware({
-	loginUrl: "/auth/sign-in",
-});
+export default function middleware(_request: NextRequest) {
+	return NextResponse.next();
+}
 
 export const config = {
-	matcher: [
-		// Protect everything except auth routes, API auth, static files, and Next internals
-		"/((?!auth|api/auth|_next/static|_next/image|favicon\\.ico|recipe-images).*)",
-	],
+	matcher: [],
 };

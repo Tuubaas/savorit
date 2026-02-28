@@ -7,7 +7,6 @@ import { db } from "../../../db";
 import { recipes } from "../../../db/schema";
 import type { RecipeData } from "../../actions";
 import { RecipeCard } from "../../../components/RecipeCard";
-import { auth } from "@/lib/auth/server";
 
 export default async function RecipeDetailPage({
   params,
@@ -15,11 +14,9 @@ export default async function RecipeDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { data: session } = await auth.getSession();
-  const userId = session!.user.id;
 
   const result = await db.query.recipes.findFirst({
-    where: and(eq(recipes.id, id), eq(recipes.userId, userId)),
+    where: and(eq(recipes.id, id), eq(recipes.userId, "anonymous")),
     with: {
       ingredients: { orderBy: (i, { asc }) => [asc(i.orderIndex)] },
       instructions: { orderBy: (i, { asc }) => [asc(i.stepNumber)] },

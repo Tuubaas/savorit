@@ -4,12 +4,8 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../../db";
 import { recipes } from "../../db/schema";
-import { auth } from "@/lib/auth/server";
 
 export default async function RecipesPage() {
-  const { data: session } = await auth.getSession();
-  const userId = session!.user.id;
-
   const allRecipes = await db
     .select({
       id: recipes.id,
@@ -19,7 +15,7 @@ export default async function RecipesPage() {
       createdAt: recipes.createdAt,
     })
     .from(recipes)
-    .where(eq(recipes.userId, userId))
+    .where(eq(recipes.userId, "anonymous"))
     .orderBy(desc(recipes.createdAt));
 
   return (
