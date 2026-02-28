@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  /* Recipe card: remove decorative chrome */
+  .recipe-card {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Keep images but avoid page-breaking inside a step */
+  li, p {
+    page-break-inside: avoid;
+  }
+}

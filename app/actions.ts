@@ -1,6 +1,7 @@
 "use server";
 
 import * as cheerio from "cheerio";
+import type { CheerioAPI } from "cheerio";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_SIZE = 2 * 1024 * 1024; // 2MB
@@ -14,8 +15,20 @@ function isValidUrl(url: string): boolean {
   }
 }
 
+export type RecipeData = {
+  title: string;
+  description?: string;
+  ingredients: string[];
+  instructions: string[];
+  images: string[];
+  prepTime?: string;
+  cookTime?: string;
+  servings?: string;
+  sourceUrl: string;
+};
+
 export type ParseResult =
-  | { success: true; text: string }
+  | { success: true; recipe: RecipeData }
   | { success: false; error: string };
 
 export async function parseUrlAction(
@@ -23,6 +36,181 @@ export async function parseUrlAction(
   formData: FormData,
 ): Promise<ParseResult> {
   return parseUrlFromFormData(formData);
+}
+
+function parseIso8601Duration(duration: string): string {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return duration;
+  const hours = match[1] ? Number.parseInt(match[1]) : 0;
+  const minutes = match[2] ? Number.parseInt(match[2]) : 0;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} hr`);
+  if (minutes > 0) parts.push(`${minutes} min`);
+  return parts.length > 0 ? parts.join(" ") : duration;
+}
+
+function normalizeInstructions(raw: unknown): string[] {
+  if (!raw) return [];
+  if (typeof raw === "string") return [raw].filter(Boolean);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (typeof item === "object" && item !== null) {
+        const obj = item as Record<string, unknown>;
+        if (typeof obj.text === "string") return obj.text.trim();
+        if (typeof obj.name === "string") return obj.name.trim();
+        if (Array.isArray(obj.itemListElement)) {
+          return normalizeInstructions(obj.itemListElement).join(" ");
+        }
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function normalizeImages(raw: unknown): string[] {
+  if (!raw) return [];
+  if (typeof raw === "string") return [raw];
+  if (Array.isArray(raw)) {
+    return raw.flatMap((item) => {
+      if (typeof item === "string") return [item];
+      if (typeof item === "object" && item !== null) {
+        const obj = item as Record<string, unknown>;
+        if (typeof obj.url === "string") return [obj.url];
+      }
+      return [];
+    });
+  }
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.url === "string") return [obj.url];
+  }
+  return [];
+}
+
+function extractRecipeFromJsonLd($: CheerioAPI): RecipeData | null {
+  const scripts = $('script[type="application/ld+json"]');
+  for (let i = 0; i < scripts.length; i++) {
+    const content = $(scripts[i]).html();
+    if (!content) continue;
+    try {
+      const parsed = JSON.parse(content);
+      const candidates: unknown[] = Array.isArray(parsed)
+        ? parsed
+        : parsed["@graph"]
+          ? parsed["@graph"]
+          : [parsed];
+
+      for (const candidate of candidates) {
+        if (typeof candidate !== "object" || candidate === null) continue;
+        const obj = candidate as Record<string, unknown>;
+        const type = obj["@type"];
+        const isRecipe =
+          type === "Recipe" ||
+          (Array.isArray(type) && type.includes("Recipe"));
+        if (!isRecipe) continue;
+
+        const title = typeof obj.name === "string" ? obj.name.trim() : "";
+        if (!title) continue;
+
+        const description =
+          typeof obj.description === "string"
+            ? obj.description.trim()
+            : undefined;
+
+        const ingredients = Array.isArray(obj.recipeIngredient)
+          ? (obj.recipeIngredient as unknown[])
+              .filter((x): x is string => typeof x === "string")
+              .map((x) => x.trim())
+              .filter(Boolean)
+          : [];
+
+        const instructions = normalizeInstructions(obj.recipeInstructions);
+        const images = normalizeImages(obj.image);
+
+        const prepTime =
+          typeof obj.prepTime === "string"
+            ? parseIso8601Duration(obj.prepTime)
+            : undefined;
+        const cookTime =
+          typeof obj.cookTime === "string"
+            ? parseIso8601Duration(obj.cookTime)
+            : undefined;
+
+        const servings =
+          typeof obj.recipeYield === "string"
+            ? obj.recipeYield
+            : Array.isArray(obj.recipeYield)
+              ? String(obj.recipeYield[0])
+              : undefined;
+
+        return {
+          title,
+          description,
+          ingredients,
+          instructions,
+          images,
+          prepTime,
+          cookTime,
+          servings,
+          sourceUrl: "",
+        };
+      }
+    } catch {
+      // malformed JSON-LD, continue to next script tag
+    }
+  }
+  return null;
+}
+
+function extractRecipeHeuristic($: CheerioAPI, url: string): RecipeData {
+  const ogTitle = $('meta[property="og:title"]').attr("content");
+  const h1 = $("h1").first().text().trim();
+  const title = ogTitle || h1 || new URL(url).hostname;
+
+  const description =
+    $('meta[property="og:description"]').attr("content") ||
+    $('meta[name="description"]').attr("content") ||
+    undefined;
+
+  const ogImage = $('meta[property="og:image"]').attr("content");
+  const images = ogImage ? [ogImage] : [];
+
+  // Try to find ingredient-like list items
+  const ingredientCandidates: string[] = [];
+  $(
+    '[class*="ingredient" i], [id*="ingredient" i], [aria-label*="ingredient" i]',
+  ).each((_, el) => {
+    $(el)
+      .find("li")
+      .each((_, li) => {
+        const text = $(li).text().trim();
+        if (text) ingredientCandidates.push(text);
+      });
+  });
+
+  // Try to find instruction-like list items
+  const instructionCandidates: string[] = [];
+  $(
+    '[class*="instruction" i], [id*="instruction" i], [class*="direction" i], [id*="direction" i], [class*="step" i]',
+  ).each((_, el) => {
+    $(el)
+      .find("li, p")
+      .each((_, item) => {
+        const text = $(item).text().trim();
+        if (text) instructionCandidates.push(text);
+      });
+  });
+
+  return {
+    title,
+    description,
+    ingredients: ingredientCandidates,
+    instructions: instructionCandidates,
+    images,
+    sourceUrl: url,
+  };
 }
 
 async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
@@ -62,7 +250,10 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
     }
 
     const contentType = response.headers.get("content-type") ?? "";
-    if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
+    if (
+      !contentType.includes("text/html") &&
+      !contentType.includes("text/plain")
+    ) {
       return {
         success: false,
         error: "URL does not appear to be an HTML page.",
@@ -102,17 +293,18 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
     const html = decoder.decode(fullBuffer);
 
     const $ = cheerio.load(html);
-    $("script, style, nav, footer, noscript, iframe").remove();
-    const text = $("body").text().trim();
 
-    if (!text) {
-      return { success: false, error: "No text content found on the page." };
+    const jsonLdRecipe = extractRecipeFromJsonLd($);
+    if (jsonLdRecipe) {
+      jsonLdRecipe.sourceUrl = url;
+      return { success: true, recipe: jsonLdRecipe };
     }
 
-    // Normalize whitespace: collapse multiple spaces/newlines
-    const normalizedText = text.replace(/\s+/g, " ").trim();
+    // Remove noise before heuristic extraction
+    $("script, style, nav, footer, noscript, iframe").remove();
+    const recipe = extractRecipeHeuristic($, url);
 
-    return { success: true, text: normalizedText };
+    return { success: true, recipe };
   } catch (err) {
     if (err instanceof Error) {
       if (err.name === "AbortError") {
