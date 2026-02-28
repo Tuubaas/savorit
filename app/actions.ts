@@ -2,6 +2,12 @@
 
 import * as cheerio from "cheerio";
 import type { CheerioAPI } from "cheerio";
+import { db } from "../db";
+import {
+  ingredients as ingredientsTable,
+  instructions as instructionsTable,
+  recipes as recipesTable,
+} from "../db/schema";
 import { isInstagramUrl } from "../lib/instagram";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -256,8 +262,43 @@ function extractRecipeHeuristic($: CheerioAPI, url: string): RecipeData {
 }
 
 export type ParseResult =
-  | { success: true; recipe: RecipeData }
+  | { success: true; recipe: RecipeData; id: string }
   | { success: false; error: string };
+
+async function saveRecipe(recipe: RecipeData): Promise<string> {
+  const [inserted] = await db
+    .insert(recipesTable)
+    .values({
+      title: recipe.title,
+      description: recipe.description ?? null,
+      sourceUrl: recipe.sourceUrl,
+      imageUrl: recipe.images[0] ?? null,
+      rawCaption: recipe.description ?? "",
+    })
+    .returning({ id: recipesTable.id });
+
+  if (recipe.ingredients.length > 0) {
+    await db.insert(ingredientsTable).values(
+      recipe.ingredients.map((name, i) => ({
+        recipeId: inserted.id,
+        name,
+        orderIndex: i,
+      })),
+    );
+  }
+
+  if (recipe.instructions.length > 0) {
+    await db.insert(instructionsTable).values(
+      recipe.instructions.map((content, i) => ({
+        recipeId: inserted.id,
+        stepNumber: i + 1,
+        content,
+      })),
+    );
+  }
+
+  return inserted.id;
+}
 
 function cleanInstagramCaption(raw: string): string[] {
   return raw
@@ -426,7 +467,8 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
 
       const recipe = parseInstagramCaption(data.caption, url);
       if (data.imageUrl) recipe.images.push(data.imageUrl);
-      return { success: true, recipe };
+      const id = await saveRecipe(recipe);
+      return { success: true, recipe, id };
     }
 
     const controller = new AbortController();
@@ -499,14 +541,16 @@ async function parseUrlFromFormData(formData: FormData): Promise<ParseResult> {
     const jsonLdRecipe = extractRecipeFromJsonLd($);
     if (jsonLdRecipe) {
       jsonLdRecipe.sourceUrl = url;
-      return { success: true, recipe: jsonLdRecipe };
+      const id = await saveRecipe(jsonLdRecipe);
+      return { success: true, recipe: jsonLdRecipe, id };
     }
 
     // Remove noise before heuristic extraction
     $("script, style, nav, footer, noscript, iframe").remove();
     const recipe = extractRecipeHeuristic($, url);
+    const id = await saveRecipe(recipe);
 
-    return { success: true, recipe };
+    return { success: true, recipe, id };
   } catch (err) {
     if (err instanceof Error) {
       if (err.name === "AbortError") {
