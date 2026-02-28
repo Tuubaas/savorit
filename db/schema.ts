@@ -1,8 +1,7 @@
-// Define your tables here, e.g.:
-// import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
-//
-// export const posts = pgTable("posts", {
-// 	id: serial().primaryKey(),
-// 	title: text().notNull(),
-// 	createdAt: timestamp().defaultNow().notNull(),
-// });
+import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+
+export const example = pgTable("example", {
+	id: uuid().defaultRandom().primaryKey(),
+	name: text().notNull(),
+	createdAt: timestamp("created_at").defaultNow().notNull(),
+});
