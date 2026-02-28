@@ -722,7 +722,10 @@ export async function parseUrlAction(
 
   try {
     if (isInstagramUrl(url)) {
-      const res = await fetch("http://localhost:3000/api/instagram", {
+      const { headers: reqHeaders } = await import("next/headers");
+      const host = (await reqHeaders()).get("host") || "localhost:3000";
+      const protocol = host.startsWith("localhost") ? "http" : "https";
+      const res = await fetch(`${protocol}://${host}/api/instagram`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),

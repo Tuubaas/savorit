@@ -21,6 +21,6 @@ export const config = {
 		 * - /api/auth/* (auth API handler)
 		 * - /_next/static, /_next/image, favicon.ico, public assets
 		 */
-		"/((?!auth|api/auth|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+		"/((?!auth|api/auth|api/instagram|_next/static|_next/image|favicon\\.ico|recipe-images).*)",
 	],
 };
