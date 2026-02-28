@@ -1,5 +1,5 @@
 {
-  "id": "85437830-686e-4acc-b227-13c911912cb8",
+  "id": "c4f2d2e9-996a-401d-b919-f6fee252906a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -137,12 +137,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "servings": {
-          "name": "servings",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "source_url": {
           "name": "source_url",
           "type": "text",
@@ -151,6 +145,12 @@
         },
         "image_url": {
           "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "servings": {
+          "name": "servings",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -174,20 +174,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "tags": {
+          "name": "tags",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
         }
       },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "recipes_source_url_unique": {
-          "name": "recipes_source_url_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "source_url"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

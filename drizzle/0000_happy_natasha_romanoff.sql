@@ -17,12 +17,13 @@ CREATE TABLE "recipes" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" text NOT NULL,
 	"description" text,
-	"servings" text,
 	"source_url" text NOT NULL,
 	"image_url" text,
+	"servings" text,
 	"raw_caption" text NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"tags" text[] DEFAULT '{}' NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "ingredients" ADD CONSTRAINT "ingredients_recipe_id_recipes_id_fk" FOREIGN KEY ("recipe_id") REFERENCES "public"."recipes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

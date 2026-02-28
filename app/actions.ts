@@ -36,6 +36,7 @@ export type RecipeData = {
   cookTime?: string;
   servings?: string;
   sourceUrl: string;
+  tags?: string[];
 };
 
 function dbRecipeToRecipeData(result: {
@@ -44,6 +45,7 @@ function dbRecipeToRecipeData(result: {
   sourceUrl: string;
   imageUrl: string | null;
   servings: string | null;
+  tags?: string[] | null;
   ingredients: { name: string; quantity: string | null }[];
   instructions: { content: string }[];
 }): RecipeData {
@@ -57,6 +59,7 @@ function dbRecipeToRecipeData(result: {
     images: result.imageUrl ? [result.imageUrl] : [],
     servings: result.servings ?? undefined,
     sourceUrl: result.sourceUrl,
+    tags: result.tags && result.tags.length > 0 ? result.tags : undefined,
   };
 }
 
@@ -306,6 +309,7 @@ async function saveRecipe(recipe: RecipeData): Promise<string> {
       imageUrl: recipe.images[0] ?? null,
       servings: recipe.servings ?? null,
       rawCaption: recipe.description ?? "",
+      tags: recipe.tags ?? [],
     })
     .returning({ id: recipesTable.id });
 
@@ -685,6 +689,72 @@ function parseInstagramCaption(caption: string, sourceUrl: string): RecipeData {
   };
 }
 
+async function formatRecipeWithOpenAI(
+  recipe: RecipeData,
+  openaiKey: string,
+): Promise<RecipeData> {
+  const prompt = `You are a recipe formatter. The following recipe was automatically parsed from a webpage or social media post. Clean it up and return a well-formatted version. Remove any non-essential content such as hashtags, promotional text, social media mentions, author bios, CTAs ("follow me for more", "link in bio", etc.), or filler sentences. Keep all actual recipe content: title, description (if present and useful), ingredients, and instructions. Do not invent or add anything not present in the original.
+
+Return a JSON object with these fields:
+- title: string
+- description: string or null
+- ingredients: string[] (each item formatted as "quantity unit ingredient, preparation" where applicable)
+- instructions: string[] (clear numbered steps as plain strings, without the number prefix)
+- servings: string or null
+- prepTime: string or null
+- cookTime: string or null
+
+Input recipe:
+${JSON.stringify(recipe, null, 2)}`;
+
+  console.log("[OpenAI] Formatting recipe:", recipe.title, "| key prefix:", openaiKey.slice(0, 8));
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+    }),
+  });
+
+  console.log("[OpenAI] Response status:", response.status);
+  if (!response.ok) return recipe;
+
+  const data = await response.json() as {
+    choices: { message: { content: string } }[];
+  };
+  const raw = data.choices?.[0]?.message?.content;
+  console.log("[OpenAI] Raw response:", raw);
+  if (!raw) return recipe;
+
+  const parsed = JSON.parse(raw) as Partial<RecipeData> & {
+    description?: string | null;
+    servings?: string | null;
+    prepTime?: string | null;
+    cookTime?: string | null;
+  };
+  return {
+    title: parsed.title || recipe.title,
+    description: parsed.description ?? recipe.description,
+    ingredients: Array.isArray(parsed.ingredients) && parsed.ingredients.length > 0
+      ? parsed.ingredients
+      : recipe.ingredients,
+    instructions: Array.isArray(parsed.instructions) && parsed.instructions.length > 0
+      ? parsed.instructions
+      : recipe.instructions,
+    images: recipe.images,
+    servings: parsed.servings ?? recipe.servings,
+    prepTime: parsed.prepTime ?? recipe.prepTime,
+    cookTime: parsed.cookTime ?? recipe.cookTime,
+    sourceUrl: recipe.sourceUrl,
+  };
+}
+
 export async function parseUrlAction(
   _prevState: ParseResult | null,
   formData: FormData,
@@ -696,6 +766,11 @@ export async function parseUrlAction(
 
   const urlInput = formData.get("url");
   const url = typeof urlInput === "string" ? urlInput.trim() : "";
+  const openaiKey = (() => {
+    const v = formData.get("openaiKey");
+    return typeof v === "string" ? v.trim() : "";
+  })();
+  console.log("[parseUrlAction] openaiKey present:", !!openaiKey, "| length:", openaiKey.length);
 
   if (!url) {
     return { success: false, error: "Please enter a URL." };
@@ -738,7 +813,10 @@ export async function parseUrlAction(
         return { success: false, error: data.error };
       }
 
-      const recipe = parseInstagramCaption(data.caption, url);
+      let recipe = parseInstagramCaption(data.caption, url);
+      if (openaiKey) {
+        recipe = await formatRecipeWithOpenAI(recipe, openaiKey);
+      }
       const id = await saveRecipe(recipe);
 
       if (data.imageBase64) {
@@ -830,13 +908,19 @@ export async function parseUrlAction(
     const jsonLdRecipe = extractRecipeFromJsonLd($);
     if (jsonLdRecipe) {
       jsonLdRecipe.sourceUrl = url;
-      const id = await saveRecipe(jsonLdRecipe);
-      return { success: true, recipe: jsonLdRecipe, id };
+      const formatted = openaiKey
+        ? await formatRecipeWithOpenAI(jsonLdRecipe, openaiKey)
+        : jsonLdRecipe;
+      const id = await saveRecipe(formatted);
+      return { success: true, recipe: formatted, id };
     }
 
     // Remove noise before heuristic extraction
     $("script, style, nav, footer, noscript, iframe").remove();
-    const recipe = extractRecipeHeuristic($, url);
+    let recipe = extractRecipeHeuristic($, url);
+    if (openaiKey) {
+      recipe = await formatRecipeWithOpenAI(recipe, openaiKey);
+    }
     const id = await saveRecipe(recipe);
 
     return { success: true, recipe, id };
@@ -851,5 +935,29 @@ export async function parseUrlAction(
       };
     }
     return { success: false, error: "Could not fetch URL." };
+  }
+}
+
+export type UpdateTagsResult = { success: true } | { success: false; error: string };
+
+export async function updateRecipeTagsAction(
+  recipeId: string,
+  tags: string[],
+): Promise<UpdateTagsResult> {
+  try {
+    const normalized = tags.map((t) => t.trim()).filter(Boolean);
+    const unique = [...new Set(normalized)];
+
+    await db
+      .update(recipesTable)
+      .set({ tags: unique })
+      .where(eq(recipesTable.id, recipeId));
+
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update tags",
+    };
   }
 }
